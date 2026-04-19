@@ -1,0 +1,8 @@
+{
+  "name": "RYOMS - Reborn Youth Organization Management System",
+  "description": "A centralized digital platform for managing administration, personnel onboarding, meeting minutes, programs, finance, and impact tracking for Reborn Youth Organization.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}

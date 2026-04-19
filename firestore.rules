@@ -1,0 +1,131 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // Auth context helpers
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    
+    // Check if user is active in the system
+    // We allow the bootstrap super admin by email to bypass database status check
+    function isActive() {
+      return isSignedIn() && (
+        request.auth.token.email == 'johnnamwiyo22@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'Active')
+      );
+    }
+    
+    // Admin check
+    function isAdmin() {
+      return isActive() && (
+        request.auth.token.email == 'johnnamwiyo22@gmail.com' ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+          'Admin', 'Super Admin', 'Chairperson', 'Vice Chairperson', 'Secretary', 'Vice Secretary', 'Treasurer'
+        ])
+      );
+    }
+    
+    // Super Admin check
+    function isSuperAdmin() {
+      return isActive() && (
+        request.auth.token.email == 'johnnamwiyo22@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['Super Admin', 'Chairperson']
+      );
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      function isValidUser(data) {
+        let roles = [
+          'Super Admin', 'Admin', 'Field Staff', 'Volunteer', 
+          'Chairperson', 'Vice Chairperson', 'Secretary', 'Vice Secretary', 'Treasurer'
+        ];
+        return data.keys().hasAll(['email', 'role', 'status', 'createdAt']) &&
+               data.email is string && data.email.size() <= 256 &&
+               data.role in roles &&
+               data.status in ['Pending', 'Active', 'Suspended'];
+      }
+
+      // Allow get if it's the user's own profile OR if requester is active
+      allow get: if isSignedIn() && (isOwner(userId) || isActive());
+      
+      // List rules (Pillar 8: Secure List Queries)
+      allow list: if isSignedIn() && (
+        request.auth.token.email == 'johnnamwiyo22@gmail.com' ||
+        isAdmin() || 
+        (isActive() && resource.data.status == 'Active')
+      );
+      
+      allow create: if isSignedIn() && (
+        (isOwner(userId) && isValidUser(incoming()) && incoming().status == 'Pending' && incoming().role == 'Volunteer') ||
+        (isAdmin() && isValidUser(incoming()))
+      );
+      
+      allow update: if isSignedIn() && (
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'phoneNumber', 'position'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasAny(['status', 'role', 'approvedBy']) && isValidUser(incoming())) ||
+        (request.auth.token.email == 'johnnamwiyo22@gmail.com' && isOwner(userId))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // 2. Members Collection
+    match /members/{memberId} {
+      function isValidMember(data) {
+        return data.fullName is string && data.fullName.size() <= 200 &&
+               data.gender in ['Male', 'Female', 'Other'] &&
+               (!('phoneNumber' in data) || data.phoneNumber is string) &&
+               (!('position' in data) || data.position is string);
+      }
+
+      allow read: if isActive();
+      allow create: if isActive() && isValidId(memberId) && isValidMember(incoming());
+      allow update: if isAdmin() && isValidMember(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // 3. Projects Collection
+    match /projects/{projectId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    // 4. Transactions Collection
+    match /transactions/{transactionId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    // 5. Events Collection
+    match /events/{eventId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    
+    // 6. Meetings Collection
+    match /meetings/{meetingId} {
+      function isValidMeeting(data) {
+        return data.title is string && data.title.size() <= 200 &&
+               data.minutes is string && data.minutes.size() <= 10000;
+      }
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    
+    // 7. Test/Connection match
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
+  }
+}

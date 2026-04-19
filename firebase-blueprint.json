@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a staff member, volunteer, or administrator.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin", "Field Staff", "Volunteer", "Chairperson", "Vice Chairperson", "Secretary", "Vice Secretary", "Treasurer"] },
+        "status": { "type": "string", "enum": ["Pending", "Active", "Suspended"] },
+        "phoneNumber": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "position": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "approvedBy": { "type": "string" }
+      },
+      "required": ["email", "role", "status"]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Represents minutes of an organizational meeting.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "attendees": { "type": "string" },
+        "minutes": { "type": "string" },
+        "recordedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "date", "minutes"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Represents a youth member/beneficiary.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "dateOfBirth": { "type": "string", "format": "date" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "address": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "gender"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Represents an organizational program or project.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["Planned", "Active", "Completed", "On Hold"] },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "managerId": { "type": "string" }
+      },
+      "required": ["name", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents a financial transaction (income/expense).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["Income", "Expense"] },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "recordedBy": { "type": "string" }
+      },
+      "required": ["amount", "type", "date"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Represents an activity or event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "registeredCount": { "type": "number" },
+        "projectId": { "type": "string" }
+      },
+      "required": ["title", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of staff and volunteer profiles."
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Collection of youth members."
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Organizational projects/programs."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Financial records."
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Planned events and activities."
+    },
+    "/meetings/{meetingId}": {
+      "schema": "Meeting",
+      "description": "Archive of meeting minutes."
+    }
+  }
+}
