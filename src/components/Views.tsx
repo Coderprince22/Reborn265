@@ -4,14 +4,14 @@ import {
   ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Clock, MapPin, 
   BarChart3, Loader2, Trash2, Edit3, ShieldCheck, ShieldAlert, Shield, 
   UserPlus, FileBarChart, Download, Upload, FileJson, FileSpreadsheet,
-  Check, X, FileText, History
+  Check, X, FileText, History, Send, MessageCircle, Mail
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useAuth } from './AuthGuard';
-import { UserProfile, Member, Project, Transaction, AppEvent, UserRole, Meeting } from '../types';
+import { UserProfile, Member, Project, Transaction, AppEvent, UserRole, Meeting, Communication } from '../types';
 
 export const USER_ROLES: UserRole[] = [
   'Super Admin', 'Admin', 'Field Staff', 'Volunteer', 
@@ -1576,7 +1576,205 @@ export function AdminView({ onNavigate }: { onNavigate?: (id: string) => void })
     </div>
   );
 }
-export function CommView() { return <div className="text-center p-20 text-gray-400 italic bg-white rounded-3xl border border-dashed border-border m-6">Communication portal is being configured for direct SMS and Email broadcasting...</div> }
+export function CommView() {
+  const [comms, setComms] = useState<Communication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [activeTab, setActiveTab] = useState<'broadcast' | 'history'>('broadcast');
+  const [newComm, setNewComm] = useState<Partial<Communication>>({
+    type: 'Broadcasting',
+    channel: 'SMS',
+    recipients: 'Everyone',
+    status: 'Sent'
+  });
+  const { profile } = useAuth();
+
+  useEffect(() => {
+    const q = query(collection(db, 'communications'), orderBy('sentAt', 'desc'), limit(50));
+    return onSnapshot(q, (s) => {
+      setComms(s.docs.map(d => ({ id: d.id, ...d.data() } as Communication)));
+      setLoading(false);
+    }, (err) => {
+      console.debug("Communications listener suppressed:", err.message);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComm.message || !newComm.subject || isSending) return;
+    setIsSending(true);
+    try {
+      await addDoc(collection(db, 'communications'), {
+        ...newComm,
+        senderId: profile?.uid,
+        senderName: profile?.displayName,
+        sentAt: serverTimestamp(),
+        status: 'Sent'
+      });
+      setNewComm({
+        type: 'Broadcasting',
+        channel: 'SMS',
+        recipients: 'Everyone',
+        status: 'Sent'
+      });
+      setActiveTab('history');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="py-6 space-y-6">
+      <div className="flex items-center justify-between px-6">
+        <div>
+          <h2 className="text-xl font-bold text-text-main">Communication Center</h2>
+          <p className="text-xs text-text-muted mt-1">Broadcast messages via SMS, Email, and In-App notifications</p>
+        </div>
+        <div className="flex bg-slate-100 p-1 rounded-xl">
+           <button 
+             onClick={() => setActiveTab('broadcast')}
+             className={cn("px-4 py-1.5 text-xs font-bold rounded-lg transition-all", activeTab === 'broadcast' ? "bg-white text-primary shadow-sm" : "text-text-muted hover:text-text-main")}
+           >
+             New Broadcast
+           </button>
+           <button 
+             onClick={() => setActiveTab('history')}
+             className={cn("px-4 py-1.5 text-xs font-bold rounded-lg transition-all", activeTab === 'history' ? "bg-white text-primary shadow-sm" : "text-text-muted hover:text-text-main")}
+           >
+             Message History
+           </button>
+        </div>
+      </div>
+
+      <div className="px-6 space-y-6">
+        {activeTab === 'broadcast' ? (
+          <Card title="Compose Broadcast Message">
+            <form onSubmit={handleSend} className="space-y-6">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Distribution List</label>
+                    <select 
+                      className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                      value={newComm.recipients}
+                      onChange={e => setNewComm({...newComm, recipients: e.target.value as any})}
+                    >
+                      <option value="Everyone">Everyone</option>
+                      <option value="Staff">Staff Only</option>
+                      <option value="Volunteers">Active Volunteers</option>
+                      <option value="Youth Members">Youth Members Registry</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Delivery Channel</label>
+                    <div className="flex gap-2">
+                       {['SMS', 'Email', 'In-App'].map(channel => (
+                         <button
+                           key={channel}
+                           type="button"
+                           onClick={() => setNewComm({...newComm, channel: channel as any})}
+                           className={cn(
+                             "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border transition-all",
+                             newComm.channel === channel ? "bg-primary/10 border-primary text-primary" : "bg-white border-border text-text-muted hover:border-primary/50"
+                           )}
+                         >
+                            {channel === 'SMS' && <MessageCircle className="w-4 h-4" />}
+                            {channel === 'Email' && <Mail className="w-4 h-4" />}
+                            {channel === 'In-App' && <ShieldCheck className="w-4 h-4" />}
+                            <span className="text-[10px] font-bold">{channel}</span>
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Subject / Header</label>
+                    <input 
+                      required
+                      className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary transition-all"
+                      placeholder="Enter broadcast subject..."
+                      value={newComm.subject || ''}
+                      onChange={e => setNewComm({...newComm, subject: e.target.value})}
+                    />
+                  </div>
+               </div>
+
+               <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Message Content</label>
+                  <textarea 
+                    required
+                    rows={6}
+                    className="w-full bg-slate-50 border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary resize-none transition-all"
+                    placeholder="Type your message here..."
+                    value={newComm.message || ''}
+                    onChange={e => setNewComm({...newComm, message: e.target.value})}
+                  />
+                  <div className="flex justify-between items-center mt-2 px-1">
+                    <p className="text-[10px] text-text-muted italic">
+                      Characters: {newComm.message?.length || 0} 
+                      {newComm.channel === 'SMS' && ` (Approx. ${Math.ceil((newComm.message?.length || 0) / 160)} SMS parts)`}
+                    </p>
+                    <p className="text-[10px] text-text-muted bg-slate-100 px-2 py-0.5 rounded-full font-medium">Estimated Recipients: ~340</p>
+                  </div>
+               </div>
+
+               <button 
+                 type="submit"
+                 disabled={isSending}
+                 className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-primary-dark transition-all shadow-lg shadow-primary/20 active:scale-[0.99] disabled:opacity-50"
+               >
+                 {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Send className="w-5 h-5" /> Send Broadcast Now</>}
+               </button>
+            </form>
+          </Card>
+        ) : (
+          <Card title="Previous Communications">
+             <div className="space-y-4">
+                {loading ? (
+                  <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
+                ) : comms.length === 0 ? (
+                  <div className="py-20 text-center flex flex-col items-center">
+                    <MessageCircle className="w-12 h-12 text-slate-100 mb-4" />
+                    <p className="text-sm text-text-muted italic">No communication history found.</p>
+                  </div>
+                ) : comms.map(comm => (
+                  <div key={comm.id} className="p-5 bg-white border border-border rounded-2xl flex items-start gap-4 hover:border-primary/30 hover:shadow-sm transition-all group">
+                     <div className={cn(
+                       "w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-inner",
+                       comm.channel === 'SMS' ? "bg-green-50 text-green-600" :
+                       comm.channel === 'Email' ? "bg-blue-50 text-blue-600" : "bg-purple-50 text-purple-600"
+                     )}>
+                        {comm.channel === 'SMS' && <MessageCircle className="w-6 h-6" />}
+                        {comm.channel === 'Email' && <Mail className="w-6 h-6" />}
+                        {comm.channel === 'In-App' && <ShieldCheck className="w-6 h-6" />}
+                     </div>
+                     <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                           <h4 className="text-sm font-bold text-text-main truncate pr-2">{comm.subject}</h4>
+                           <span className="text-[10px] text-text-muted font-medium">
+                             {comm.sentAt?.seconds ? new Date(comm.sentAt.seconds * 1000).toLocaleString() : 'Just now'}
+                           </span>
+                        </div>
+                        <p className="text-xs text-text-muted line-clamp-2 mb-3 leading-relaxed">{comm.message}</p>
+                        <div className="flex items-center gap-4">
+                           <div className="flex items-center gap-1.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-success"></div>
+                              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{comm.status}</span>
+                           </div>
+                           <span className="text-[10px] text-text-muted bg-slate-50 border border-border/50 px-2 py-0.5 rounded-full">Target: {comm.recipients}</span>
+                           <span className="text-[10px] text-text-muted ml-auto group-hover:text-primary transition-colors italic">Sent by: {comm.senderName}</span>
+                        </div>
+                     </div>
+                  </div>
+                ))}
+             </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function FinancialReportsView() {
   const [txs, setTxs] = useState<Transaction[]>([]);

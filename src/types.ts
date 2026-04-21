@@ -65,3 +65,16 @@ export interface Meeting {
   recordedBy: string;
   createdAt: any;
 }
+
+export interface Communication {
+  id: string;
+  type: 'Broadcasting' | 'Direct Message';
+  subject: string;
+  message: string;
+  recipients: 'Everyone' | 'Staff' | 'Volunteers' | 'Youth Members';
+  channel: 'SMS' | 'Email' | 'In-App';
+  senderId: string;
+  senderName: string;
+  sentAt: any;
+  status: 'Draft' | 'Sent' | 'Failed';
+}
