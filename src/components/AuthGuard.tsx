@@ -99,9 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const credentialLogin = (username: string) => {
     const mockProfile: UserProfile = {
-      uid: 'admin-265',
+      uid: 'admin-dzuka',
       email: 'admin@ryoms.org',
-      displayName: 'System Admin',
+      displayName: 'dzuka',
       role: 'Super Admin',
       status: 'Active',
       createdAt: new Date().toISOString(),
@@ -152,7 +152,7 @@ function LoginScreen({ onCredentialLogin }: { onCredentialLogin: (u: string) => 
 
   const handleCredLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'Admin265' && password === '123456') {
+    if (username === 'dzuka' && password === 'dzuKa26') {
       onCredentialLogin(username);
     } else {
       setError('Invalid system credentials');
