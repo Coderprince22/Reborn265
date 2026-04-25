@@ -128,7 +128,7 @@ export function Shell({ children, activeTab, onTabChange }: {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex: 1 h-screen overflow-y-auto relative flex flex-col bg-body-bg">
+      <main className="flex-1 h-screen overflow-y-auto relative flex flex-col bg-body-bg">
         <header className="h-16 bg-white border-b border-border flex items-center justify-between px-8 sticky top-0 z-30">
           <div className="flex flex-col">
             <h2 className="text-lg font-semibold tracking-tight text-text-main">

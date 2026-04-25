@@ -110,8 +110,6 @@ const ImportButton = ({ onImport, label = 'Import' }: { onImport: (data: any[]) 
   );
 };
 
-// ... existing code ...
-
 export function ReportsView({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const [stats, setStats] = useState({
     members: 0,

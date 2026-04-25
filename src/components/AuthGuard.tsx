@@ -25,11 +25,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Mock Admin Login persistence
   useEffect(() => {
-    const mockAdmin = localStorage.getItem('ryoms_mock_admin');
-    if (mockAdmin) {
-      const adminProfile: UserProfile = JSON.parse(mockAdmin);
-      setProfile(adminProfile);
-      setLoading(false);
+    try {
+      const mockAdmin = localStorage.getItem('ryoms_mock_admin');
+      if (mockAdmin && mockAdmin !== 'undefined') {
+        const adminProfile: UserProfile = JSON.parse(mockAdmin);
+        setProfile(adminProfile);
+        setLoading(false);
+      }
+    } catch (e) {
+      console.error("Local storage parse error:", e);
+      localStorage.removeItem('ryoms_mock_admin');
     }
   }, []);
 

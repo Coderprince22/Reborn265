@@ -5,7 +5,15 @@ import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: GoogleGenAI | null = null;
+const getAi = () => {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return null;
+    aiClient = new GoogleGenAI({ apiKey });
+  }
+  return aiClient;
+};
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,6 +42,13 @@ export function Chatbot() {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
+
+    const ai = getAi();
+    if (!ai) {
+      setMessages(prev => [...prev, { role: 'assistant', content: "AI Assistant is not configured. (Missing GEMINI_API_KEY)" }]);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const chat = ai.models.generateContent({
