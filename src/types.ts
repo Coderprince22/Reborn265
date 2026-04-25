@@ -78,3 +78,11 @@ export interface Communication {
   sentAt: any;
   status: 'Draft' | 'Sent' | 'Failed';
 }
+
+export interface EventRegistration {
+  id: string;
+  userId: string;
+  userName: string;
+  userType: 'Personnel' | 'Youth Member';
+  registeredAt: any;
+}

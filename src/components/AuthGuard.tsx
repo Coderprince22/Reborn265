@@ -169,11 +169,20 @@ function LoginScreen({ onCredentialLogin }: { onCredentialLogin: (u: string) => 
         className="max-w-md w-full bg-white rounded-2xl p-10 shadow-2xl border border-border text-center z-10"
       >
         <div className="mb-10">
-          <div className="w-16 h-16 bg-primary rounded-xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
-            <span className="text-white text-3xl font-black">R</span>
+          <div className="w-24 h-24 bg-white rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl border border-border p-3 overflow-hidden relative">
+            <img 
+              src="/logo.png" 
+              alt="REYO Logo" 
+              className="w-full h-full object-contain" 
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            <div className="hidden w-full h-full bg-sidebar-bg rounded-2xl flex items-center justify-center font-black text-white text-6xl">R</div>
           </div>
-          <h1 className="text-3xl font-bold text-text-main mb-2 tracking-tight">RYOMS</h1>
-          <p className="text-text-muted text-sm px-4">Reliable Youth Organization Management System</p>
+          <h1 className="text-3xl font-black text-text-main mb-2 tracking-tighter">REYO ORGANIZATION</h1>
+          <p className="text-text-muted text-xs font-semibold uppercase tracking-[0.2em] px-4 opacity-70">Empowering Youth, Rebuilding Communities</p>
         </div>
         
         {!showCreds ? (

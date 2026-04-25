@@ -41,17 +41,27 @@ export function Shell({ children, activeTab, onTabChange }: {
         className="h-full bg-sidebar-bg text-white flex flex-col py-6 relative border-r border-border"
       >
         <div className="px-6 mb-8 w-full flex items-center justify-start gap-3">
-          <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center flex-shrink-0 font-extrabold text-lg">
-            R
+          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg p-1.5 border border-border group overflow-hidden">
+            <img 
+              src="/logo.png" 
+              alt="REYO Logo" 
+              className="w-full h-full object-contain" 
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+            <div className="hidden w-full h-full bg-sidebar-bg rounded-lg flex items-center justify-center font-black text-white text-xl">R</div>
           </div>
           {isSidebarOpen && (
-            <motion.span 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="font-bold text-xl tracking-tight"
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex flex-col"
             >
-              RYOMS
-            </motion.span>
+              <span className="font-black text-lg tracking-tight text-white leading-none">REYO</span>
+              <span className="text-[9px] font-bold text-primary uppercase tracking-[0.2em] mt-1">Management</span>
+            </motion.div>
           )}
         </div>
 

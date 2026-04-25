@@ -11,7 +11,7 @@ import { db } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useAuth } from './AuthGuard';
-import { UserProfile, Member, Project, Transaction, AppEvent, UserRole, Meeting, Communication } from '../types';
+import { UserProfile, Member, Project, Transaction, AppEvent, UserRole, Meeting, Communication, EventRegistration } from '../types';
 
 export const USER_ROLES: UserRole[] = [
   'Super Admin', 'Admin', 'Field Staff', 'Volunteer', 
@@ -256,7 +256,9 @@ export function DashboardView({ onNavigate }: { onNavigate?: (tab: string) => vo
   });
   const [pendingCount, setPendingCount] = useState(0);
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
+  
+  const isManagement = ['Super Admin', 'Admin', 'Chairperson', 'Secretary', 'Treasurer'].includes(profile?.role || '');
+  const isLeader = ['Vice Chairperson', 'Vice Secretary', 'Vice Treasurer', 'Program Manager', 'Field Staff', 'Volunteer'].includes(profile?.role || '');
 
   useEffect(() => {
     const unsubMembers = onSnapshot(collection(db, 'members'), (s) => setStats(prev => ({ ...prev, members: s.size })), (err) => console.debug("Members listener suppressed:", err.message));
@@ -317,10 +319,14 @@ export function DashboardView({ onNavigate }: { onNavigate?: (tab: string) => vo
         </motion.div>
       )}
 
-      <div className="grid grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <Stat label="Total Youth Members" value={stats.members.toLocaleString()} icon={UserRound} trend="Live" color="bg-primary" onClick={() => onNavigate?.('members')} />
-        <Stat label="Active Volunteers" value={stats.volunteers.toLocaleString()} icon={Users} trend="Verified" color="bg-sidebar-bg" onClick={() => onNavigate?.('hr')} />
-        <Stat label="Net Funding" value={`MWK ${(stats.funds / 1000).toFixed(1)}k`} icon={DollarSign} trend="Real-time" color="bg-accent" onClick={() => onNavigate?.('finance')} />
+        {(isManagement || isLeader) && (
+          <Stat label="Active Volunteers" value={stats.volunteers.toLocaleString()} icon={Users} trend="Verified" color="bg-sidebar-bg" onClick={() => onNavigate?.('hr')} />
+        )}
+        {isManagement && (
+          <Stat label="Net Funding" value={`MWK ${(stats.funds / 1000).toFixed(1)}k`} icon={DollarSign} trend="Real-time" color="bg-accent" onClick={() => onNavigate?.('finance')} />
+        )}
         <Stat label="Running Projects" value={stats.projects.toLocaleString()} icon={Briefcase} trend="Total" color="bg-success" onClick={() => onNavigate?.('projects')} />
       </div>
 
@@ -369,6 +375,7 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUser, setNewUser] = useState<Partial<UserProfile>>({ role: 'Volunteer', status: 'Pending' });
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [viewingUser, setViewingUser] = useState<UserProfile | null>(null);
   const { profile: currentUser } = useAuth();
 
   useEffect(() => {
@@ -423,6 +430,16 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
     } catch (error) {
       console.error("Failed to change role:", error);
+    }
+  };
+
+  const handleStatusChange = async (userId: string, newStatus: string) => {
+    const isLead = ['Super Admin', 'Admin', 'Chairperson', 'Secretary'].includes(currentUser?.role || '');
+    if (!currentUser || !isLead) return;
+    try {
+      await updateDoc(doc(db, 'users', userId), { status: newStatus });
+    } catch (error) {
+      console.error("Failed to change status:", error);
     }
   };
 
@@ -580,7 +597,7 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
               </thead>
               <tbody className="divide-y divide-border">
                 {users.map((user) => (
-                  <tr key={user.uid} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={user.uid} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="py-4 px-2">
                       <div className="flex items-center gap-3">
                         <img 
@@ -600,7 +617,7 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
                         <span className="text-[13px] text-text-main">{user.role}</span>
                         {(currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin' || currentUser?.role === 'Chairperson' || currentUser?.role === 'Secretary') && (
                           <select 
-                            className="bg-slate-50 border border-border rounded px-1 py-0.5 text-[10px] outline-none"
+                            className="bg-slate-50 border border-border rounded px-1 py-0.5 text-[10px] outline-none opacity-0 group-hover:opacity-100 transition-opacity"
                             value={user.role}
                             onChange={(e) => handleRoleChange(user.uid, e.target.value)}
                           >
@@ -612,13 +629,19 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
                       </div>
                     </td>
                     <td className="py-4 px-2">
-                      <span className={cn(
-                        "text-[10px] font-bold px-2 py-1 rounded-full uppercase",
-                        user.status === 'Active' ? "bg-green-50 text-green-700" : 
-                        user.status === 'Pending' ? "bg-accent/10 text-accent" : "bg-red-50 text-red-700"
-                      )}>
-                        {user.status}
-                      </span>
+                       <select 
+                         value={user.status}
+                         onChange={(e) => handleStatusChange(user.uid, e.target.value)}
+                         className={cn(
+                           "text-[10px] font-bold px-2 py-1 rounded-full uppercase outline-none cursor-pointer transition-all border border-transparent hover:border-border",
+                           user.status === 'Active' ? "bg-green-50 text-green-700" : 
+                           user.status === 'Pending' ? "bg-accent/10 text-accent" : "bg-red-50 text-red-700"
+                         )}
+                       >
+                         <option value="Active">Active</option>
+                         <option value="Suspended">Suspended</option>
+                         <option value="Pending">Pending</option>
+                       </select>
                     </td>
                     <td className="py-4 px-2 text-right">
                       {user.status === 'Pending' && (currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin') ? (
@@ -630,7 +653,12 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
                           {processingId === user.uid ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Approve'}
                         </button>
                       ) : (
-                        <button className="text-xs font-semibold text-primary hover:underline">View Profile</button>
+                        <button 
+                          onClick={() => setViewingUser(user)}
+                          className="text-xs font-bold text-primary hover:underline px-3 py-1 rounded-lg hover:bg-primary/5 transition-all"
+                        >
+                          View Profile
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -640,6 +668,78 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
           )}
         </div>
       </Card>
+
+      {/* Personnel Profile Modal */}
+      <AnimatePresence>
+        {viewingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-border"
+            >
+              <div className="relative h-32 bg-sidebar-bg">
+                 <button 
+                   onClick={() => setViewingUser(null)}
+                   className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-10"
+                 >
+                   <X className="w-5 h-5" />
+                 </button>
+              </div>
+              <div className="px-8 pb-8 -mt-12 text-center">
+                 <img 
+                   src={viewingUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(viewingUser.displayName || 'User')}`}
+                   className="w-24 h-24 rounded-3xl border-4 border-white mx-auto shadow-lg bg-white"
+                   referrerPolicy="no-referrer"
+                 />
+                 <h3 className="mt-4 text-xl font-bold text-text-main">{viewingUser.displayName}</h3>
+                 <p className="text-sm text-text-muted">{viewingUser.email}</p>
+                 <div className="flex items-center justify-center gap-2 mt-3">
+                    <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase">{viewingUser.role}</span>
+                    <span className={cn(
+                      "px-3 py-1 text-[10px] font-bold rounded-full uppercase",
+                      viewingUser.status === 'Active' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                    )}>
+                      {viewingUser.status}
+                    </span>
+                 </div>
+
+                 <div className="mt-8 grid grid-cols-2 gap-4 text-left">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Joined Date</p>
+                       <p className="text-sm font-semibold text-text-main">
+                         {viewingUser.createdAt ? new Date(viewingUser.createdAt).toLocaleDateString() : 'N/A'}
+                       </p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Position</p>
+                       <p className="text-sm font-semibold text-text-main">{viewingUser.position || 'Not specified'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-border/50 col-span-2">
+                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Contact Information</p>
+                       <p className="text-sm font-semibold text-text-main">{viewingUser.phoneNumber || 'No phone number linked'}</p>
+                    </div>
+                 </div>
+
+                 <div className="mt-8 flex gap-3">
+                    <button 
+                      onClick={() => setViewingUser(null)}
+                      className="flex-1 py-3 bg-slate-100 text-text-main font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                    >
+                      Close Profile
+                    </button>
+                    {['Super Admin', 'Admin'].includes(currentUser?.role || '') && (
+                       <button className="flex-1 py-3 bg-primary text-white font-bold rounded-2xl hover:bg-primary-dark transition-all shadow-lg shadow-primary/20">
+                         Edit Permissions
+                       </button>
+                    )}
+                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -849,6 +949,7 @@ export function MembersView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newMember, setNewMember] = useState<Partial<Member>>({ gender: 'Male' });
+  const [viewingMember, setViewingMember] = useState<Member | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'members'), orderBy('createdAt', 'desc'));
@@ -1032,40 +1133,53 @@ export function MembersView() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase">Member</th>
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase">Position</th>
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase">Gender</th>
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase">Location</th>
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase text-right">Actions</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Member</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Position</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Gender</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Location</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {members.map((member) => (
-                  <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={member.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="py-4 px-2">
                        <div className="flex items-center gap-3">
-                         <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center font-bold text-text-muted text-xs uppercase">
+                         <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center font-bold text-text-muted text-xs uppercase border border-border/50 shadow-inner">
                            {member.fullName.charAt(0)}
                          </div>
                          <div>
-                           <p className="text-sm font-semibold text-text-main">
-                             {member.fullName}
-                           </p>
-                           <p className="text-[11px] text-text-muted">{member.phoneNumber || 'No phone'}</p>
+                            <button 
+                              onClick={() => setViewingMember(member)}
+                              className="text-sm font-bold text-text-main hover:text-primary transition-colors text-left"
+                            >
+                              {member.fullName}
+                            </button>
+                            <p className="text-[11px] text-text-muted">{member.phoneNumber || 'No contact linked'}</p>
                          </div>
                        </div>
                     </td>
                     <td className="py-4 px-2">
-                      <span className="text-xs text-text-main font-medium">{member.position || '—'}</span>
+                      <span className="text-[13px] text-text-main font-medium">{member.position || '—'}</span>
                     </td>
-                    <td className="py-4 px-2 text-sm text-text-main">{member.gender}</td>
-                    <td className="py-4 px-2 text-sm text-text-muted">{member.address || '—'}</td>
+                    <td className="py-4 px-2">
+                      <span className="text-[13px] text-text-main">{member.gender}</span>
+                    </td>
+                    <td className="py-4 px-2">
+                      <span className="text-sm text-text-muted line-clamp-1 max-w-[150px]">{member.address || '—'}</span>
+                    </td>
                     <td className="py-4 px-2 text-right">
-                       <div className="flex items-center justify-end gap-2">
-                         <button onClick={() => handleEdit(member)} className="p-2 text-primary hover:bg-primary/5 rounded-lg transition-colors">
+                       <div className="flex items-center justify-end gap-1">
+                         <button 
+                           onClick={() => setViewingMember(member)}
+                           className="p-2 text-primary hover:bg-primary/5 rounded-xl transition-all"
+                         >
+                           <Search className="w-4 h-4" />
+                         </button>
+                         <button onClick={() => handleEdit(member)} className="p-2 text-text-muted hover:text-primary hover:bg-primary/5 rounded-xl transition-colors">
                            <Edit3 className="w-4 h-4" />
                          </button>
-                         <button onClick={() => handleDeleteMember(member.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
+                         <button onClick={() => handleDeleteMember(member.id)} className="p-2 text-text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                            <Trash2 className="w-4 h-4" />
                          </button>
                        </div>
@@ -1077,6 +1191,72 @@ export function MembersView() {
           )}
         </div>
       </Card>
+
+      {/* Member Profile Modal */}
+      <AnimatePresence>
+        {viewingMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl border border-border"
+            >
+              <div className="relative h-24 bg-primary/10">
+                 <button 
+                   onClick={() => setViewingMember(null)}
+                   className="absolute top-4 right-4 p-2 bg-black/5 hover:bg-black/10 text-text-main rounded-full transition-all z-10"
+                 >
+                   <X className="w-5 h-5" />
+                 </button>
+              </div>
+              <div className="px-8 pb-8 -mt-10 text-center">
+                 <div className="w-20 h-20 bg-white rounded-2xl border-4 border-white mx-auto shadow-lg flex items-center justify-center font-black text-3xl text-primary uppercase">
+                    {viewingMember.fullName.charAt(0)}
+                 </div>
+                 <h3 className="mt-4 text-xl font-bold text-text-main">{viewingMember.fullName}</h3>
+                 <p className="text-sm text-text-muted lowercase tracking-tighter">Member #ID-{viewingMember.id.slice(-5).toUpperCase()}</p>
+                 
+                 <div className="mt-8 space-y-4 text-left">
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Gender</p>
+                          <p className="text-sm font-semibold text-text-main">{viewingMember.gender}</p>
+                       </div>
+                       <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Position</p>
+                          <p className="text-sm font-semibold text-text-main">{viewingMember.position || 'General Member'}</p>
+                       </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Phone Number</p>
+                       <p className="text-sm font-semibold text-text-main">{viewingMember.phoneNumber || 'No phone number linked'}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-border/50">
+                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-1">Residential Address</p>
+                       <p className="text-sm font-semibold text-text-main">{viewingMember.address || 'Address not registered'}</p>
+                    </div>
+                 </div>
+
+                 <div className="mt-8 flex gap-3">
+                    <button 
+                      onClick={() => setViewingMember(null)}
+                      className="flex-1 py-3 bg-slate-100 text-text-main font-bold rounded-2xl hover:bg-slate-200 transition-all text-sm"
+                    >
+                      Close Profile
+                    </button>
+                    <button 
+                      onClick={() => handleEdit(viewingMember)}
+                      className="flex-1 py-3 bg-primary text-white font-bold rounded-2xl hover:bg-primary-dark transition-all shadow-lg shadow-primary/20 text-sm"
+                    >
+                      Edit Registration
+                    </button>
+                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1261,18 +1441,43 @@ export function EventsView() {
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newEvent, setNewEvent] = useState<Partial<AppEvent>>({ date: new Date().toISOString() });
+  
+  const [managingEventId, setManagingEventId] = useState<string | null>(null);
+  const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [isRegistering, setIsRegistering] = useState<string | null>(null);
+
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
+  const isAdmin = ['Super Admin', 'Admin', 'Chairperson', 'Secretary', 'Treasurer'].includes(profile?.role || '');
 
   useEffect(() => {
-    return onSnapshot(query(collection(db, 'events'), orderBy('date', 'asc')), (s) => {
+    const unsubEvents = onSnapshot(query(collection(db, 'events'), orderBy('date', 'asc')), (s) => {
       setEvents(s.docs.map(d => ({ id: d.id, ...d.data() } as AppEvent)));
       setLoading(false);
     }, (err) => {
       console.debug("Events listener suppressed:", err.message);
       setLoading(false);
     });
+
+    const unsubMembers = onSnapshot(collection(db, 'members'), (s) => {
+      setAllMembers(s.docs.map(d => ({ id: d.id, ...d.data() } as Member)));
+    });
+
+    return () => {
+      unsubEvents();
+      unsubMembers();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!managingEventId) {
+      setRegistrations([]);
+      return;
+    }
+    return onSnapshot(collection(db, 'events', managingEventId, 'registrations'), (s) => {
+      setRegistrations(s.docs.map(d => ({ id: d.id, ...d.data() } as EventRegistration)));
+    });
+  }, [managingEventId]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1293,6 +1498,51 @@ export function EventsView() {
     }
   };
 
+  const handleRegister = async (eventId: string) => {
+    if (!profile || isRegistering) return;
+    setIsRegistering(eventId);
+    try {
+      const regRef = collection(db, 'events', eventId, 'registrations');
+      // Check if already registered
+      const q = query(regRef, where('userId', '==', profile.uid));
+      // Since it's a subcollection, checking is easier
+      await addDoc(regRef, {
+        userId: profile.uid,
+        userName: profile.displayName,
+        userType: 'Personnel',
+        registeredAt: serverTimestamp()
+      });
+      
+      const eventRef = doc(db, 'events', eventId);
+      const ev = events.find(e => e.id === eventId);
+      if (ev) {
+        await updateDoc(eventRef, { registeredCount: (ev.registeredCount || 0) + 1 });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRegistering(null);
+    }
+  };
+
+  const handleAddMemberToEvent = async (eventId: string, member: Member) => {
+    try {
+      const regRef = collection(db, 'events', eventId, 'registrations');
+      await addDoc(regRef, {
+        userId: member.id,
+        userName: member.fullName,
+        userType: 'Youth Member',
+        registeredAt: serverTimestamp()
+      });
+      
+      const eventRef = doc(db, 'events', eventId);
+      const ev = events.find(e => e.id === eventId);
+      if (ev) {
+        await updateDoc(eventRef, { registeredCount: (ev.registeredCount || 0) + 1 });
+      }
+    } catch (e) { console.error(e); }
+  };
+
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this event?")) return;
     try {
@@ -1309,6 +1559,7 @@ export function EventsView() {
           await addDoc(collection(db, 'events'), { 
             ...item, 
             date: item.date || new Date().toISOString(),
+            registeredCount: 0,
             createdAt: serverTimestamp() 
           });
         }
@@ -1356,7 +1607,7 @@ export function EventsView() {
                    <button 
                      type="submit" 
                      disabled={isSubmitting}
-                     className="w-full bg-primary text-white py-2.5 rounded-xl font-bold text-sm shadow-sm hover:bg-primary-dark flex items-center justify-center gap-2"
+                     className="w-full bg-success text-white py-2.5 rounded-xl font-bold text-sm shadow-sm hover:bg-success/90 flex items-center justify-center gap-2"
                    >
                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Event'}
                    </button>
@@ -1367,13 +1618,13 @@ export function EventsView() {
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {loading ? (
           <div className="col-span-3 py-20 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
         ) : events.length === 0 ? (
           <div className="col-span-3 py-20 bg-white rounded-xl border border-dashed border-border text-center text-text-muted italic">No upcoming events.</div>
         ) : events.map((ev) => (
-          <Card key={ev.id} className="hover:border-primary/20 transition-all group">
+          <Card key={ev.id} className="hover:border-primary/20 transition-all group relative">
             <div className="flex gap-4 mb-4">
               <div className="w-12 h-14 bg-slate-100 rounded-xl flex flex-col items-center justify-center border border-border">
                 <span className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">{new Date(ev.date).toLocaleString('default', { month: 'short' })}</span>
@@ -1390,19 +1641,110 @@ export function EventsView() {
               <MapPin className="w-3 h-3" /> {ev.location}
             </p>
             <div className="pt-4 border-t border-border flex items-center justify-between">
-              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{ev.registeredCount} Registered</span>
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{ev.registeredCount || 0} Registered</span>
               <div className="flex items-center gap-2">
-                {isAdmin && (
-                  <button onClick={() => handleDelete(ev.id)} className="p-1.5 text-text-muted hover:text-red-500 rounded-lg hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
-                    <Trash2 className="w-4 h-4" />
+                {isAdmin ? (
+                  <>
+                    <button onClick={() => handleDelete(ev.id)} className="p-1.5 text-text-muted hover:text-red-500 rounded-lg hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setManagingEventId(ev.id)}
+                      className="text-xs font-bold text-primary hover:underline"
+                    >
+                      Manage List
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={() => handleRegister(ev.id)}
+                    disabled={isRegistering === ev.id}
+                    className="text-xs font-bold text-primary hover:bg-primary/5 px-3 py-1 rounded-lg transition-all"
+                  >
+                    {isRegistering === ev.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Register Me'}
                   </button>
                 )}
-                <button className="text-xs font-bold text-primary hover:underline">Manage List</button>
               </div>
             </div>
           </Card>
         ))}
       </div>
+
+      {/* Manage List Modal */}
+      <AnimatePresence>
+        {managingEventId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl border border-border"
+            >
+              <div className="p-6 border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-text-main">Registration Management</h3>
+                  <p className="text-xs text-text-muted mt-1">{events.find(e => e.id === managingEventId)?.title}</p>
+                </div>
+                <button onClick={() => setManagingEventId(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                  <X className="w-5 h-5 text-text-muted" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-auto p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Registered Participants ({registrations.length})</h4>
+                    <div className="space-y-2">
+                       {registrations.length === 0 ? (
+                         <p className="text-sm text-text-muted italic py-4">No one registered yet.</p>
+                       ) : registrations.map(reg => (
+                         <div key={reg.id} className="flex items-center justify-between p-3 bg-slate-50 border border-border rounded-xl">
+                            <div>
+                               <p className="text-sm font-bold text-text-main">{reg.userName}</p>
+                               <p className="text-[10px] text-text-muted uppercase">{reg.userType}</p>
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Add Member to Event</h4>
+                    <div className="space-y-2 border-l border-border pl-4">
+                       <div className="relative mb-2">
+                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                         <input type="text" placeholder="Search members..." className="w-full bg-white border border-border rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-primary" />
+                       </div>
+                       <div className="space-y-1 max-h-[300px] overflow-auto">
+                          {allMembers.filter(m => !registrations.some(r => r.userId === m.id)).map(member => (
+                            <div key={member.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition-all group">
+                               <span className="text-xs font-semibold text-text-main">{member.fullName}</span>
+                               <button 
+                                 onClick={() => handleAddMemberToEvent(managingEventId, member)}
+                                 className="p-1.5 text-primary bg-primary/10 rounded-lg hover:bg-primary hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                               >
+                                 <Plus className="w-3 h-3" />
+                               </button>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-6 border-t border-border bg-slate-50 flex justify-end">
+                <button 
+                  onClick={() => setManagingEventId(null)}
+                  className="bg-white border border-border text-text-main px-6 py-2 rounded-xl text-sm font-bold hover:bg-slate-100"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
