@@ -43,12 +43,17 @@ export function Shell({ children, activeTab, onTabChange }: {
         <div className="px-6 mb-8 w-full flex items-center justify-start gap-3">
           <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg p-1.5 border border-border group overflow-hidden">
             <img 
-              src="/logo.png" 
+              src="/reborn_youth_logo.png" 
               alt="REYO Logo" 
               className="w-full h-full object-contain" 
               onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                const target = e.currentTarget;
+                if (target.src.includes('reborn_youth_logo.png')) {
+                  target.src = "/logo.png";
+                } else if (target.src.includes('logo.png')) {
+                  target.style.display = 'none';
+                  target.nextElementSibling?.classList.remove('hidden');
+                }
               }}
             />
             <div className="hidden w-full h-full bg-sidebar-bg rounded-lg flex items-center justify-center font-black text-white text-xl">R</div>

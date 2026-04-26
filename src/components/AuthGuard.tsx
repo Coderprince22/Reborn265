@@ -152,7 +152,7 @@ function LoginScreen({ onCredentialLogin }: { onCredentialLogin: (u: string) => 
 
   const handleCredLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'dzuka' && password === 'dzuKa26') {
+    if (username === 'dzuka' && password === 'dzuKa123') {
       onCredentialLogin(username);
     } else {
       setError('Invalid system credentials');
@@ -171,12 +171,17 @@ function LoginScreen({ onCredentialLogin }: { onCredentialLogin: (u: string) => 
         <div className="mb-10">
           <div className="w-24 h-24 bg-white rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl border border-border p-3 overflow-hidden relative">
             <img 
-              src="/logo.png" 
+              src="/reborn_youth_logo.png" 
               alt="REYO Logo" 
               className="w-full h-full object-contain" 
               onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                const target = e.currentTarget;
+                if (target.src.includes('reborn_youth_logo.png')) {
+                  target.src = "/logo.png";
+                } else if (target.src.includes('logo.png')) {
+                  target.style.display = 'none';
+                  target.nextElementSibling?.classList.remove('hidden');
+                }
               }}
             />
             <div className="hidden w-full h-full bg-sidebar-bg rounded-2xl flex items-center justify-center font-black text-white text-6xl">R</div>

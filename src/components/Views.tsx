@@ -4,8 +4,12 @@ import {
   ArrowUpRight, ArrowDownRight, TrendingUp, Calendar, Clock, MapPin, 
   BarChart3, Loader2, Trash2, Edit3, ShieldCheck, ShieldAlert, Shield, 
   UserPlus, FileBarChart, Download, Upload, FileJson, FileSpreadsheet,
-  Check, X, FileText, History, Send, MessageCircle, Mail
+  Check, X, FileText, History, Send, MessageCircle, Mail, PieChart as PieChartIcon
 } from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
+} from 'recharts';
 import { collection, onSnapshot, query, orderBy, limit, doc, updateDoc, addDoc, serverTimestamp, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1948,6 +1952,30 @@ export function ImpactView() {
 
   const progress = stats.totalMilestones > 0 ? (stats.completedMilestones / stats.totalMilestones) * 100 : 0;
 
+  const pieData = projects.reduce((acc: { name: string; value: number }[], p) => {
+    const existing = acc.find(item => item.name === p.status);
+    if (existing) {
+      existing.value++;
+    } else {
+      acc.push({ name: p.status || 'Unknown', value: 1 });
+    }
+    return acc;
+  }, []);
+
+  const kpiData = [
+    { name: 'Youth Enrollment', target: 500, current: 420 },
+    { name: 'Workshops', target: 20, current: 14 },
+    { name: 'Grant Allocation', target: 100, current: 85 },
+    { name: 'Cleanups', target: 12, current: 9 }
+  ];
+
+  const projectProgressData = projects.map(p => ({
+    name: p.name,
+    progress: p.milestones?.length ? Math.round((p.milestones.filter(m => m.status === 'Completed').length / p.milestones.length) * 100) : 0
+  })).sort((a, b) => b.progress - a.progress).slice(0, 6);
+
+  const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -1966,9 +1994,69 @@ export function ImpactView() {
         <Stat label="Active Reach" value="~1,420" icon={Users} color="bg-green-600" />
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
-        <Card title="Initiative Performance">
-          <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Card title="Initiative Progress (%)" subtitle="Top 6 initiatives by milestone completion">
+          <div className="h-80 w-full pt-4">
+             <ResponsiveContainer width="100%" height="100%">
+               <BarChart data={projectProgressData} layout="vertical" margin={{ left: 40, right: 40 }}>
+                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                 <XAxis type="number" domain={[0, 100]} hide />
+                 <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                 <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                 <Bar dataKey="progress" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={20} />
+               </BarChart>
+             </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card title="Project Distribution" subtitle="Organizational focus areas by status">
+          <div className="h-80 w-full flex items-center justify-center relative">
+             <ResponsiveContainer width="100%" height="100%">
+               <PieChart>
+                 <Pie
+                   data={pieData}
+                   cx="50%"
+                   cy="50%"
+                   innerRadius={60}
+                   outerRadius={100}
+                   paddingAngle={5}
+                   dataKey="value"
+                 >
+                   {pieData.map((entry, index) => (
+                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                   ))}
+                 </Pie>
+                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                 <Legend verticalAlign="bottom" height={36} iconType="circle" />
+               </PieChart>
+             </ResponsiveContainer>
+             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center">
+                   <p className="text-xs font-bold text-text-muted uppercase">Total</p>
+                   <p className="text-2xl font-black text-text-main">{projects.length}</p>
+                </div>
+             </div>
+          </div>
+        </Card>
+
+        <Card title="KPI Benchmarks" subtitle="Comparing organizational targets with current performance">
+          <div className="h-80 w-full pt-4">
+             <ResponsiveContainer width="100%" height="100%">
+               <BarChart data={kpiData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ecf0f1" />
+                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} />
+                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                 <Legend iconType="rect" />
+                 <Bar dataKey="current" fill="#10b981" radius={[4, 4, 0, 0]} name="Current" />
+                 <Bar dataKey="target" fill="#e2e8f0" radius={[4, 4, 0, 0]} name="Target" />
+               </BarChart>
+             </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card title="Initiative Breakdown">
+          <div className="space-y-6 max-h-[320px] overflow-auto pr-2">
             {loading ? (
               <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
             ) : projects.length === 0 ? (
@@ -1993,28 +2081,6 @@ export function ImpactView() {
                 </div>
               );
             })}
-          </div>
-        </Card>
-
-        <Card title="KPI Targets">
-          <div className="space-y-4">
-             {[
-               { label: 'Youth Enrollment', target: 500, current: 420 },
-               { label: 'Community Workshops', target: 20, current: 14 },
-               { label: 'Grant Allocation', target: 100, current: 85 },
-               { label: 'Environmental Cleanups', target: 12, current: 9 }
-             ].map((kpi, i) => (
-                <div key={i} className="p-4 bg-slate-50 border border-border/50 rounded-2xl flex items-center justify-between">
-                   <div>
-                      <p className="text-xs font-bold text-text-main">{kpi.label}</p>
-                      <p className="text-[10px] text-text-muted font-bold uppercase tracking-tighter">Target: {kpi.target}+ items</p>
-                   </div>
-                   <div className="text-right">
-                      <p className="text-lg font-black text-text-main">{(kpi.current / kpi.target * 100).toFixed(0)}%</p>
-                      <p className="text-[10px] font-bold text-success uppercase">On Track</p>
-                   </div>
-                </div>
-             ))}
           </div>
         </Card>
       </div>
