@@ -34,6 +34,12 @@ export interface Project {
   startDate?: string;
   endDate?: string;
   managerId?: string;
+  milestones?: {
+    id: string;
+    title: string;
+    status: 'Pending' | 'Completed';
+    date: string;
+  }[];
 }
 
 export interface Transaction {

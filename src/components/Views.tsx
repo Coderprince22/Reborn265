@@ -257,8 +257,8 @@ export function DashboardView({ onNavigate }: { onNavigate?: (tab: string) => vo
   const [pendingCount, setPendingCount] = useState(0);
   const { profile } = useAuth();
   
-  const isManagement = ['Super Admin', 'Admin', 'Chairperson', 'Secretary', 'Treasurer'].includes(profile?.role || '');
-  const isLeader = ['Vice Chairperson', 'Vice Secretary', 'Vice Treasurer', 'Program Manager', 'Field Staff', 'Volunteer'].includes(profile?.role || '');
+  const isAdmin = ['Super Admin', 'Admin', 'Chairperson', 'Secretary', 'Treasurer'].includes(profile?.role || '');
+  const isLeader = ['Vice Chairperson', 'Vice Secretary', 'Vice Treasurer', 'Field Staff'].includes(profile?.role || '');
 
   useEffect(() => {
     const unsubMembers = onSnapshot(collection(db, 'members'), (s) => setStats(prev => ({ ...prev, members: s.size })), (err) => console.debug("Members listener suppressed:", err.message));
@@ -321,10 +321,10 @@ export function DashboardView({ onNavigate }: { onNavigate?: (tab: string) => vo
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <Stat label="Total Youth Members" value={stats.members.toLocaleString()} icon={UserRound} trend="Live" color="bg-primary" onClick={() => onNavigate?.('members')} />
-        {(isManagement || isLeader) && (
+        {(isAdmin || isLeader) && (
           <Stat label="Active Volunteers" value={stats.volunteers.toLocaleString()} icon={Users} trend="Verified" color="bg-sidebar-bg" onClick={() => onNavigate?.('hr')} />
         )}
-        {isManagement && (
+        {isAdmin && (
           <Stat label="Net Funding" value={`MWK ${(stats.funds / 1000).toFixed(1)}k`} icon={DollarSign} trend="Real-time" color="bg-accent" onClick={() => onNavigate?.('finance')} />
         )}
         <Stat label="Running Projects" value={stats.projects.toLocaleString()} icon={Briefcase} trend="Total" color="bg-success" onClick={() => onNavigate?.('projects')} />
@@ -590,7 +590,7 @@ export function HRView({ onNavigate }: { onNavigate?: (id: string) => void }) {
               <thead>
                 <tr className="border-b border-border">
                   <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">User</th>
-                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Requested Role</th>
+                  <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Position</th>
                   <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest">Status</th>
                   <th className="pb-4 px-2 text-[11px] font-bold text-text-muted uppercase tracking-widest text-right">Actions</th>
                 </tr>
@@ -751,16 +751,30 @@ export function ProjectsView() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newProject, setNewProject] = useState<Partial<Project>>({ status: 'Active' });
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'Admin' || profile?.role === 'Super Admin';
+  const isAdmin = ['Super Admin', 'Admin', 'Chairperson', 'Secretary', 'Vice Secretary'].includes(profile?.role || '');
+
+  const [managers, setManagers] = useState<UserProfile[]>([]);
+  const [filterManager, setFilterManager] = useState<string>('all');
+  const [viewingTimelineId, setViewingTimelineId] = useState<string | null>(null);
 
   useEffect(() => {
-    return onSnapshot(collection(db, 'projects'), (s) => {
-      setProjects(s.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
+    const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
       setLoading(false);
     }, (err) => {
       console.debug("Projects list listener suppressed:", err.message);
       setLoading(false);
     });
+
+    const unsubManagers = onSnapshot(query(collection(db, 'users'), where('status', '==', 'Active')), (s) => {
+      setManagers(s.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+    });
+
+    return () => {
+      unsub();
+      unsubManagers();
+    };
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -770,7 +784,8 @@ export function ProjectsView() {
     try {
       await addDoc(collection(db, 'projects'), {
         ...newProject,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        milestones: []
       });
       setNewProject({ status: 'Active' });
       setIsAdding(false);
@@ -781,25 +796,28 @@ export function ProjectsView() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete project?")) return;
-    await deleteDoc(doc(db, 'projects', id));
+  const handleCreateMilestone = async (projectId: string, title: string) => {
+    try {
+      const proj = projects.find(p => p.id === projectId);
+      if (!proj) return;
+      const newMilestone = {
+        id: Math.random().toString(36).substr(2, 9),
+        title,
+        status: 'Pending',
+        date: new Date().toISOString()
+      };
+      await updateDoc(doc(db, 'projects', projectId), {
+        milestones: [...(proj.milestones || []), newMilestone]
+      });
+    } catch (e) { console.error(e); }
   };
 
-  const handleBulkImport = async (data: any[]) => {
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this project?")) return;
     try {
-      for (const item of data) {
-        if (item.name) {
-          await addDoc(collection(db, 'projects'), { 
-            ...item, 
-            status: item.status || 'Planned',
-            createdAt: serverTimestamp() 
-          });
-        }
-      }
-      alert(`Imported ${data.length} projects.`);
-    } catch (e) {
-      console.error(e);
+      await deleteDoc(doc(db, 'projects', id));
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -823,6 +841,8 @@ export function ProjectsView() {
     category: {} as Record<string, number> 
   });
 
+  const filteredProjects = projects.filter(p => filterManager === 'all' || p.managerId === filterManager);
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -840,9 +860,28 @@ export function ProjectsView() {
       </div>
 
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold text-text-main">Organizational Initiatives</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="text-xl font-bold text-text-main">Organizational Initiatives</h3>
+          <div className="flex items-center gap-2 bg-white border border-border rounded-lg px-3 py-1 text-xs">
+            <Filter className="w-3 h-3 text-text-muted" />
+            <select 
+              className="font-bold bg-transparent outline-none py-1"
+              value={filterManager}
+              onChange={(e) => setFilterManager(e.target.value)}
+            >
+              <option value="all">All Managers</option>
+              {managers.map(m => (
+                <option key={m.uid} value={m.uid}>{m.displayName}</option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="flex gap-2">
-          <ImportButton onImport={handleBulkImport} />
+          <ImportButton onImport={async (data) => {
+            for (const item of data) {
+              if (item.name) await addDoc(collection(db, 'projects'), { ...item, createdAt: serverTimestamp(), milestones: [] });
+            }
+          }} />
           <ExportButton data={projects} filename="projects" />
           {isAdmin && (
             <button 
@@ -864,23 +903,42 @@ export function ProjectsView() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-text-muted uppercase">Project Name</label>
-                    <input required className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none" value={newProject.name || ''} onChange={e => setNewProject({...newProject, name: e.target.value})} />
+                    <input required className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" value={newProject.name || ''} onChange={e => setNewProject({...newProject, name: e.target.value})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-text-muted uppercase">Category</label>
-                    <select className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none" value={newProject.category || ''} onChange={e => setNewProject({...newProject, category: e.target.value})}>
+                    <select required className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" value={newProject.category || ''} onChange={e => setNewProject({...newProject, category: e.target.value})}>
                       <option value="">Select Category</option>
                       <option value="Education">Education</option>
                       <option value="Environment">Environment</option>
                       <option value="Health">Health</option>
                       <option value="STEM">STEM</option>
-                      <option value="SME">SME Support</option>
+                      <option value="SME Support">SME Support</option>
+                      <option value="Youth Empowerment">Youth Empowerment</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase">Assign Manager</label>
+                    <select required className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" value={newProject.managerId || ''} onChange={e => setNewProject({...newProject, managerId: e.target.value})}>
+                      <option value="">Select Manager</option>
+                      {managers.map(m => (
+                        <option key={m.uid} value={m.uid}>{m.displayName} ({m.position || m.role})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase">Target Status</label>
+                    <select className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none focus:border-primary" value={newProject.status} onChange={e => setNewProject({...newProject, status: e.target.value as any})}>
+                      <option value="Active">Active</option>
+                      <option value="Planned">Planned</option>
+                      <option value="Completed">Completed</option>
+                      <option value="On Hold">On Hold</option>
                     </select>
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-text-muted uppercase">Description</label>
-                  <textarea className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none h-24" value={newProject.description || ''} onChange={e => setNewProject({...newProject, description: e.target.value})} />
+                  <textarea className="w-full bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none h-24 focus:border-primary" value={newProject.description || ''} onChange={e => setNewProject({...newProject, description: e.target.value})} />
                 </div>
                 <button 
                   type="submit" 
@@ -898,10 +956,10 @@ export function ProjectsView() {
       <div className="grid grid-cols-2 gap-6">
         {loading ? (
           <div className="col-span-2 py-20 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
-        ) : projects.length === 0 ? (
-          <div className="col-span-2 py-20 bg-white rounded-xl border border-dashed border-border text-center text-text-muted italic">No active projects found.</div>
-        ) : projects.map((proj) => (
-          <Card key={proj.id} className="hover:border-primary/20 transition-all group relative">
+        ) : filteredProjects.length === 0 ? (
+          <div className="col-span-2 py-20 bg-white rounded-xl border border-dashed border-border text-center text-text-muted italic">No initiatives found for this view.</div>
+        ) : filteredProjects.map((proj) => (
+          <Card key={proj.id} className="hover:border-primary/20 transition-all group relative h-full flex flex-col">
             {isAdmin && (
               <button onClick={() => handleDelete(proj.id)} className="absolute top-4 right-4 p-2 text-text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Trash2 className="w-4 h-4" />
@@ -911,16 +969,34 @@ export function ProjectsView() {
               <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shadow-inner">
                 <Briefcase className="w-6 h-6" />
               </div>
-              <span className="text-[10px] font-bold px-3 py-1 bg-slate-50 border border-border rounded-full text-text-muted uppercase">{proj.category}</span>
+              <span className="text-[10px] font-bold px-3 py-1 bg-slate-50 border border-border rounded-full text-text-muted uppercase tracking-tighter">{proj.category}</span>
             </div>
-            <h4 className="text-xl font-bold text-text-main mb-2 tracking-tight">{proj.name}</h4>
-            <p className="text-sm text-text-muted line-clamp-2 mb-6 leading-relaxed">{proj.description}</p>
+            <h4 className="text-xl font-bold text-text-main mb-2 tracking-tight group-hover:text-primary transition-colors">{proj.name}</h4>
+            <p className="text-sm text-text-muted line-clamp-2 mb-6 leading-relaxed flex-1">{proj.description}</p>
+            
+            <div className="mb-6 p-4 bg-slate-50 border border-border/50 rounded-2xl space-y-3">
+               <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-white rounded-full border border-border flex items-center justify-center text-[10px] font-bold">
+                       {(managers.find(m => m.uid === proj.managerId)?.displayName || '?')[0]}
+                    </div>
+                    <p className="text-[11px] font-bold text-text-main">
+                      {managers.find(m => m.uid === proj.managerId)?.displayName || 'Unassigned'}
+                    </p>
+                  </div>
+                  <span className="text-[9px] font-bold text-text-muted uppercase">Project Manager</span>
+               </div>
+               <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-primary" style={{ width: `${(proj.milestones?.filter(m=>m.status==='Completed').length || 0) / (proj.milestones?.length || 1) * 100}%` }}></div>
+               </div>
+            </div>
+
             <div className="flex items-center justify-between pt-6 border-t border-border mt-auto">
               <div className="flex items-center gap-2">
-                <div className={cn("w-2 h-2 rounded-full", proj.status === 'Active' ? "bg-success" : proj.status === 'Completed' ? "bg-blue-500" : "bg-accent")}></div>
+                <div className={cn("w-2 h-2 rounded-full shadow-sm", proj.status === 'Active' ? "bg-success" : proj.status === 'Completed' ? "bg-blue-500" : "bg-accent")}></div>
                 {isAdmin ? (
                   <select 
-                    className="text-xs font-bold text-text-main uppercase tracking-widest bg-transparent outline-none cursor-pointer"
+                    className="text-xs font-bold text-text-main uppercase tracking-widest bg-transparent outline-none cursor-pointer hover:text-primary"
                     value={proj.status}
                     onChange={(e) => handleStatusUpdate(proj.id, e.target.value)}
                   >
@@ -933,11 +1009,114 @@ export function ProjectsView() {
                   <p className="text-xs font-bold text-text-main uppercase tracking-widest">{proj.status}</p>
                 )}
               </div>
-              <button className="text-[11px] font-bold text-primary hover:underline">View Details →</button>
+              <button 
+                onClick={() => setViewingTimelineId(proj.id)}
+                className="text-[11px] font-bold text-primary hover:bg-primary hover:text-white px-3 py-1 rounded-lg transition-all"
+              >
+                Track Timeline →
+              </button>
             </div>
           </Card>
         ))}
       </div>
+
+      {/* Project Timeline Modal */}
+      <AnimatePresence>
+        {viewingTimelineId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-border flex flex-col max-h-[85vh]"
+            >
+              <div className="p-8 border-b border-border flex items-center justify-between">
+                 <div>
+                   <h3 className="text-2xl font-bold text-text-main tracking-tight">Project Evolution</h3>
+                   <p className="text-sm text-text-muted mt-1">{projects.find(p => p.id === viewingTimelineId)?.name}</p>
+                 </div>
+                 <button onClick={() => setViewingTimelineId(null)} className="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl transition-all">
+                   <X className="w-6 h-6 text-text-muted" />
+                 </button>
+              </div>
+              
+              <div className="flex-1 overflow-auto p-8 space-y-8">
+                <div className="space-y-6">
+                  {(projects.find(p => p.id === viewingTimelineId)?.milestones || []).length === 0 ? (
+                    <div className="text-center py-10 bg-slate-50 rounded-2xl border border-dashed border-border">
+                      <Clock className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                      <p className="text-sm text-text-muted italic">No milestones tracked for this project yet.</p>
+                    </div>
+                  ) : (
+                    <div className="relative pl-8 space-y-8 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-px before:bg-border">
+                      {projects.find(p => p.id === viewingTimelineId)?.milestones?.map((m, idx) => (
+                        <div key={idx} className="relative">
+                          <div className={cn(
+                            "absolute -left-[25px] top-1 w-4 h-4 rounded-full border-4 border-white shadow-sm transition-all",
+                            m.status === 'Completed' ? "bg-success" : "bg-slate-300"
+                          )}></div>
+                          <div className="flex items-center justify-between group">
+                            <div>
+                               <p className="font-bold text-text-main">{m.title}</p>
+                               <span className="text-[10px] font-bold text-text-muted uppercase">{new Date(m.date).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <span className={cn(
+                                 "text-[9px] font-bold px-2 py-1 rounded-lg uppercase",
+                                 m.status === 'Completed' ? "bg-success/10 text-success" : "bg-slate-100 text-slate-500"
+                               )}>
+                                 {m.status}
+                               </span>
+                               {isAdmin && m.status !== 'Completed' && (
+                                 <button 
+                                   onClick={async () => {
+                                     const proj = projects.find(p => p.id === viewingTimelineId);
+                                     if (!proj) return;
+                                     const updatedMilestones = proj.milestones?.map(ms => ms.id === m.id ? {...ms, status: 'Completed' as const} : ms);
+                                     await updateDoc(doc(db, 'projects', viewingTimelineId!), { milestones: updatedMilestones });
+                                   }}
+                                   className="p-1 px-2 bg-success text-white text-[9px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                 >
+                                   Complete
+                                 </button>
+                               )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <div className="pt-8 border-t border-border">
+                    <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-widest mb-4">Add New Milestone</h4>
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const title = (e.currentTarget.elements.namedItem('milestone') as HTMLInputElement).value;
+                        if (title && viewingTimelineId) {
+                          handleCreateMilestone(viewingTimelineId, title);
+                          e.currentTarget.reset();
+                        }
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input 
+                        name="milestone"
+                        placeholder="Milestone description..."
+                        required
+                        className="flex-1 bg-slate-50 border border-border rounded-xl px-4 py-2 text-sm outline-none focus:border-primary"
+                      />
+                      <button type="submit" className="bg-primary text-white px-6 rounded-xl font-bold text-sm hover:bg-primary-dark">Add</button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1748,7 +1927,100 @@ export function EventsView() {
     </div>
   );
 }
-export function ImpactView() { return <div className="text-center p-20 text-gray-400 italic">Monitoring & Evaluation dashboard...</div> }
+export function ImpactView() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'projects'), (s) => {
+      setProjects(s.docs.map(d => ({ id: d.id, ...d.data() } as Project)));
+      setLoading(false);
+    });
+  }, []);
+
+  const stats = projects.reduce((acc, p) => {
+    const milestones = p.milestones || [];
+    const completed = milestones.filter(m => m.status === 'Completed').length;
+    acc.totalMilestones += milestones.length;
+    acc.completedMilestones += completed;
+    return acc;
+  }, { totalMilestones: 0, completedMilestones: 0 });
+
+  const progress = stats.totalMilestones > 0 ? (stats.completedMilestones / stats.totalMilestones) * 100 : 0;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-text-main tracking-tighter">Impact & Evaluation</h2>
+          <p className="text-sm text-text-muted">Monitoring organizational performance and project reach</p>
+        </div>
+        <button className="flex items-center gap-2 bg-white border border-border px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-slate-50 transition-all">
+          <Download className="w-4 h-4" /> Download Impact Sheet
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <Stat label="Project Completion Rate" value={`${progress.toFixed(1)}%`} icon={TrendingUp} color="bg-primary" />
+        <Stat label="Total Benchmarks" value={stats.totalMilestones} icon={BarChart3} color="bg-blue-600" />
+        <Stat label="Active Reach" value="~1,420" icon={Users} color="bg-green-600" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <Card title="Initiative Performance">
+          <div className="space-y-6">
+            {loading ? (
+              <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
+            ) : projects.length === 0 ? (
+              <p className="text-center py-10 text-text-muted italic">No project data available.</p>
+            ) : projects.map(p => {
+              const ms = p.milestones || [];
+              const comp = ms.filter(m => m.status === 'Completed').length;
+              const perc = ms.length > 0 ? (comp / ms.length) * 100 : 0;
+              return (
+                <div key={p.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-text-main">{p.name}</span>
+                    <span className="text-xs font-black text-primary">{perc.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-primary transition-all duration-500" style={{ width: `${perc}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-text-muted font-bold uppercase tracking-widest">
+                    <span>{comp} / {ms.length} Milestones</span>
+                    <span>Status: {p.status}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card title="KPI Targets">
+          <div className="space-y-4">
+             {[
+               { label: 'Youth Enrollment', target: 500, current: 420 },
+               { label: 'Community Workshops', target: 20, current: 14 },
+               { label: 'Grant Allocation', target: 100, current: 85 },
+               { label: 'Environmental Cleanups', target: 12, current: 9 }
+             ].map((kpi, i) => (
+                <div key={i} className="p-4 bg-slate-50 border border-border/50 rounded-2xl flex items-center justify-between">
+                   <div>
+                      <p className="text-xs font-bold text-text-main">{kpi.label}</p>
+                      <p className="text-[10px] text-text-muted font-bold uppercase tracking-tighter">Target: {kpi.target}+ items</p>
+                   </div>
+                   <div className="text-right">
+                      <p className="text-lg font-black text-text-main">{(kpi.current / kpi.target * 100).toFixed(0)}%</p>
+                      <p className="text-[10px] font-bold text-success uppercase">On Track</p>
+                   </div>
+                </div>
+             ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
 
 export function ProfileView() {
   const { profile, user } = useAuth();
@@ -1853,16 +2125,20 @@ export function ProfileView() {
 
 export function AdminView({ onNavigate }: { onNavigate?: (id: string) => void }) {
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const isSuperAdmin = profile?.role === 'Super Admin';
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isSuperAdmin || authLoading) return;
     const q = query(collection(db, 'users'), where('status', '==', 'Pending'));
     return onSnapshot(q, (snapshot) => {
       setPendingUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile)));
     }, (err) => console.debug("Admin pending users listener suppressed:", err.message));
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, authLoading]);
+
+  if (authLoading) {
+    return <div className="h-full flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  }
 
   if (!isSuperAdmin) {
     return (
@@ -1952,6 +2228,7 @@ export function CommView() {
         sentAt: serverTimestamp(),
         status: 'Sent'
       });
+      alert(`Broadcast message successfully sent to ${newComm.recipients} via ${newComm.channel}.`);
       setNewComm({
         type: 'Broadcasting',
         channel: 'SMS',
@@ -1961,6 +2238,7 @@ export function CommView() {
       setActiveTab('history');
     } catch (err) {
       console.error(err);
+      alert('Failed to send broadcast. Please check your connection.');
     } finally {
       setIsSending(false);
     }
